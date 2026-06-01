@@ -21,6 +21,7 @@ pub struct RaffleCreated {
     pub description: String,
     pub randomness_source: RandomnessSource,
     /// SHA-256 hash of the off-chain metadata (description, image, rules) on IPFS.
+    #[topic]
     pub metadata_hash: BytesN<32>,
 }
 
