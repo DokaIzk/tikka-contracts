@@ -1,8 +1,9 @@
 #![no_std]
 
 use soroban_sdk::{
+    auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
     contract, contracterror, contractimpl, token, xdr::ToXdr, Address, Bytes, BytesN,
-    Env, IntoVal, String, Symbol, Vec,
+    Env, IntoVal, String, Symbol, Val, Vec,
 };
 
 mod randomness;
@@ -407,10 +408,26 @@ impl Contract {
         write_raffle(&env, &raffle);
 
         if let Some(factory_address) = env.storage().instance().get::<_, Address>(&DataKey::Factory) {
+            let contract_address = env.current_contract_address();
+            let record_volume_args: Vec<Val> =
+                (contract_address.clone(), raffle.payment_token.clone(), total_price)
+                    .into_val(&env);
+
+            env.authorize_as_current_contract(Vec::from_array(
+                &env,
+                [InvokerContractAuthEntry::Contract(SubContractInvocation {
+                    context: ContractContext {
+                        contract: factory_address.clone(),
+                        fn_name: Symbol::new(&env, "record_volume"),
+                        args: record_volume_args.clone(),
+                    },
+                    sub_invocations: Vec::new(&env),
+                })],
+            ));
             env.invoke_contract::<()>(
                 &factory_address,
                 &Symbol::new(&env, "record_volume"),
-                (raffle.payment_token.clone(), total_price).into_val(&env),
+                record_volume_args,
             );
             env.invoke_contract::<()>(
                 &factory_address,
