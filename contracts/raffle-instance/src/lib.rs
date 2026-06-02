@@ -672,6 +672,7 @@ impl Contract {
         let raffle = read_raffle(&env)?;
 
         if raffle.status != RaffleStatus::Cancelled && raffle.status != RaffleStatus::Failed {
+            release_guard(&env);
             return Err(Error::InvalidStatus);
         }
 
@@ -681,13 +682,27 @@ impl Contract {
         // Check if already refunded
         let refund_key = (DataKey::Ticket(ticket_id), Symbol::new(&env, "refunded"));
         if env.storage().persistent().has(&refund_key) {
+            release_guard(&env);
             return Err(Error::InvalidStatus); // Already refunded
         }
 
-        env.storage().persistent().set(&refund_key, &true);
-
+        // Perform transfer FIRST before marking as refunded
+        // This ensures atomicity - if transfer fails, state remains unchanged
         let token_client = token::Client::new(&env, &raffle.payment_token);
-        token_client.transfer(&env.current_contract_address(), &ticket.owner, &raffle.ticket_price);
+        let transfer_result = token_client.try_transfer(
+            &env.current_contract_address(),
+            &ticket.owner,
+            &raffle.ticket_price
+        );
+
+        // Only mark as refunded if transfer succeeded
+        if transfer_result.is_err() {
+            release_guard(&env);
+            return Err(Error::TokenTransferFailed);
+        }
+
+        // Mark ticket as refunded AFTER successful transfer
+        env.storage().persistent().set(&refund_key, &true);
 
         crate::events::TicketRefunded {
             buyer: ticket.owner,
