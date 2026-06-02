@@ -79,6 +79,7 @@ pub enum ContractError {
     TimelockNotElapsed = 15,
     InvalidRaffleId = 16,
     RaffleNotEligible = 17,
+    ConfigNotSet = 18,
 }
 
 #[contract]
@@ -332,7 +333,7 @@ impl RaffleFactory {
             .storage()
             .persistent()
             .get(&DataKey::ProtocolFeeBP)
-            .unwrap_or(0);
+            .ok_or(ContractError::ConfigNotSet)?;
         let treasury: Address = env.storage().persistent().get(&DataKey::Treasury).unwrap();
 
         let mut instances: Vec<Address> = env
@@ -398,7 +399,7 @@ impl RaffleFactory {
         Ok(raffle_address)
     }
 
-    pub fn get_protocol_stats(env: Env) -> ProtocolStats {
+    pub fn get_protocol_stats(env: Env) -> Result<ProtocolStats, ContractError> {
         let total_raffles_created: u32 = env
             .storage()
             .persistent()
@@ -408,7 +409,7 @@ impl RaffleFactory {
             .storage()
             .persistent()
             .get(&DataKey::ProtocolFeeBP)
-            .unwrap_or(0);
+            .ok_or(ContractError::ConfigNotSet)?;
         let paused: bool = env
             .storage()
             .instance()
@@ -420,12 +421,12 @@ impl RaffleFactory {
             .get(&DataKey::TotalUniqueParticipants)
             .unwrap_or(0);
 
-        ProtocolStats {
+        Ok(ProtocolStats {
             total_raffles_created,
             protocol_fee_bp,
             paused,
             total_unique_participants,
-        }
+        })
     }
 
     pub fn get_total_volume(env: Env, asset: Address) -> i128 {
@@ -729,5 +730,62 @@ mod tests {
         let env = Env::default();
         let (client, admin, treasury) = setup_factory(&env);
         assert_eq!(client.get_admin(), admin);
+    }
+
+    #[test]
+    fn test_protocol_fee_retrieval_success() {
+        let env = Env::default();
+        let (client, _admin, _treasury) = setup_factory(&env);
+        
+        let stats = client.get_protocol_stats();
+        assert_eq!(stats.protocol_fee_bp, 0); 
+    }
+
+    #[test]
+    fn test_missing_protocol_fee_config() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let treasury = Address::generate(&env);
+        let wasm_hash = BytesN::from_array(&env, &[0u8; 32]);
+
+        let contract_id = env.register(RaffleFactory, ());
+        let client = RaffleFactoryClient::new(&env, &contract_id);
+        
+        client.init_factory(&admin, &wasm_hash, &500u32, &treasury);
+        client.set_creation_delay(&0u64);
+        
+        // Remove ProtocolFeeBP directly to simulate migration/corruption gap
+        env.as_contract(&contract_id, || {
+            env.storage().persistent().remove(&DataKey::ProtocolFeeBP);
+        });
+
+        // Retrieving stats should explicitly fail
+        let stats_result = client.try_get_protocol_stats();
+        assert_eq!(stats_result, Err(Ok(ContractError::ConfigNotSet)));
+
+        // Creating a raffle should explicitly fail
+        let creator = admin.clone();
+        let config = RaffleConfig {
+            description: soroban_sdk::String::from_str(&env, "Test Raffle"),
+            end_time: env.ledger().timestamp() + 1000,
+            max_tickets: 10,
+            min_tickets: 1,
+            allow_multiple: true,
+            ticket_price: 100,
+            payment_token: treasury.clone(),
+            prize_amount: 1000,
+            prizes: soroban_sdk::vec![&env, 1000],
+            randomness_source: raffle_shared::RandomnessSource::Internal,
+            oracle_address: None,
+            protocol_fee_bp: 0,
+            treasury_address: None,
+            swap_router: None,
+            tikka_token: None,
+            metadata_hash: BytesN::from_array(&env, &[0u8; 32]),
+            claim_lockup_seconds: 3600,
+        };
+        
+        let create_result = client.try_create_raffle(&creator, &config);
+        assert_eq!(create_result, Err(Ok(ContractError::ConfigNotSet)));
     }
 }
