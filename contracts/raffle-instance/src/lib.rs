@@ -3,6 +3,9 @@
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, token, xdr::ToXdr, Address, Bytes, BytesN,
     Env, IntoVal, String, Symbol, Vec,
+    auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
+    contract, contracterror, contractimpl, token, xdr::ToXdr, Address, Bytes, BytesN,
+    Env, IntoVal, String, Symbol, Val, Vec,
 };
 
 mod randomness;
@@ -20,7 +23,7 @@ use self::randomness::{
 use crate::events::{
     DrawTriggered, PrizeClaimed, PrizeDeposited, PrizeRefunded, RaffleCancelled, RaffleCreated,
     RaffleFinalized, RaffleStatusChanged, RandomnessReceived,
-    RandomnessRequested, TicketPurchased,
+    RandomnessRequested, TicketPurchased, TicketRefunded,
     WinnerDrawn, RandomnessFallbackTriggered,
     ContractPaused, ContractUnpaused,
 };
@@ -38,6 +41,7 @@ pub const MAX_CLAIM_LOCKUP_SECONDS: u64 = 604_800; // 7 days
 pub struct Contract;
 
 #[contracttype]
+#[soroban_sdk::contracttype]
 #[derive(Clone)]
 pub struct Raffle {
     pub creator: Address,
@@ -68,6 +72,7 @@ pub struct Raffle {
 }
 
 #[contracttype]
+#[soroban_sdk::contracttype]
 #[derive(Clone)]
 pub struct FairnessMetadata {
     pub seed: u64,
@@ -90,6 +95,7 @@ pub enum DataKey {
     RandomnessSeed,
     RandomnessRequested,
     RandomnessRequestLedger,
+    RandomnessRequestId,
     FinishTime,
     TotalTickets,
 }
@@ -112,10 +118,11 @@ pub enum Error {
     NotWinner = 14,
     ClaimTooEarly = 15,
     InvalidParameters = 21,
-    InvalidStatus = 22,
-    ContractPaused = 23,
-    InvalidStateTransition = 24,
-    RaffleExpired = 25,
+    InvalidQuantity = 22,
+    InvalidStatus = 23,
+    ContractPaused = 24,
+    InvalidStateTransition = 25,
+    RaffleExpired = 26,
     InsufficientTickets = 31,
     MultipleTicketsNotAllowed = 32,
     NoTicketsSold = 33,
@@ -129,6 +136,7 @@ pub enum Error {
     TokenTransferFailed = 45,
     TooManyPrizes = 47,
 
+    MorePrizesThanTickets = 46,
 }
 
 fn read_raffle(env: &Env) -> Result<Raffle, Error> {
@@ -209,6 +217,37 @@ fn build_internal_seed_u64(env: &Env) -> u64 {
     u64::from_be_bytes(bytes)
 }
 
+fn calculate_tier_prize(raffle: &Raffle, tier_index: u32) -> Result<i128, Error> {
+    let last_tier_index = raffle.prizes.len() - 1;
+
+    if tier_index == last_tier_index {
+        let mut allocated_before_last = 0i128;
+        for i in 0..last_tier_index {
+            let prize_bp = raffle.prizes.get(i).unwrap();
+            let amount = raffle
+                .prize_amount
+                .checked_mul(prize_bp as i128)
+                .ok_or(Error::ArithmeticOverflow)?
+                / 10000;
+            allocated_before_last = allocated_before_last
+                .checked_add(amount)
+                .ok_or(Error::ArithmeticOverflow)?;
+        }
+
+        return raffle
+            .prize_amount
+            .checked_sub(allocated_before_last)
+            .ok_or(Error::ArithmeticOverflow);
+    }
+
+    let prize_bp = raffle.prizes.get(tier_index).unwrap();
+    raffle
+        .prize_amount
+        .checked_mul(prize_bp as i128)
+        .ok_or(Error::ArithmeticOverflow)
+        .map(|amount| amount / 10000)
+}
+
 #[contractimpl]
 impl Contract {
     pub fn init(
@@ -251,6 +290,10 @@ impl Contract {
             total_prizes_bp += prize_bp;
         }
         if total_prizes_bp != 10000 {
+            return Err(Error::InvalidParameters);
+        }
+
+        if config.protocol_fee_bp > 10000 {
             return Err(Error::InvalidParameters);
         }
 
@@ -351,6 +394,7 @@ impl Contract {
     }
 
     pub fn buy_tickets(env: Env, buyer: Address, quantity: u32) -> Result<u32, Error> {
+        require!(quantity > 0, Error::InvalidQuantity);
         let mut raffle = read_raffle(&env)?;
         buyer.require_auth();
         require_not_paused(&env)?;
@@ -414,10 +458,26 @@ impl Contract {
         write_raffle(&env, &raffle);
 
         if let Some(factory_address) = env.storage().instance().get::<_, Address>(&DataKey::Factory) {
+            let contract_address = env.current_contract_address();
+            let record_volume_args: Vec<Val> =
+                (contract_address.clone(), raffle.payment_token.clone(), total_price)
+                    .into_val(&env);
+
+            env.authorize_as_current_contract(Vec::from_array(
+                &env,
+                [InvokerContractAuthEntry::Contract(SubContractInvocation {
+                    context: ContractContext {
+                        contract: factory_address.clone(),
+                        fn_name: Symbol::new(&env, "record_volume"),
+                        args: record_volume_args.clone(),
+                    },
+                    sub_invocations: Vec::new(&env),
+                })],
+            ));
             env.invoke_contract::<()>(
                 &factory_address,
                 &Symbol::new(&env, "record_volume"),
-                (raffle.payment_token.clone(), total_price).into_val(&env),
+                record_volume_args,
             );
             env.invoke_contract::<()>(
                 &factory_address,
@@ -484,11 +544,27 @@ impl Contract {
             if already {
                 return Err(Error::RandomnessAlreadyRequested);
             }
+            
+            // Generate unique request ID to prevent replay attacks
+            let request_id_seed = Bytes::from_array(&env, &(
+                env.ledger().timestamp(),
+                env.ledger().sequence(),
+                env.current_contract_address().to_xdr(&env),
+            ).to_xdr(&env));
+            let request_id_hash: BytesN<32> = env.crypto().sha256(&request_id_seed).into();
+            let mut id_bytes = [0u8; 8];
+            for i in 0..8 {
+                id_bytes[i] = request_id_hash.get(i as u32).unwrap();
+            }
+            let request_id = u64::from_be_bytes(id_bytes);
+            
             env.storage().instance().set(&DataKey::RandomnessRequested, &true);
             env.storage().instance().set(&DataKey::RandomnessRequestLedger, &env.ledger().sequence());
+            env.storage().instance().set(&DataKey::RandomnessRequestId, &request_id);
 
             RandomnessRequested {
                 oracle: raffle.oracle_address.clone().unwrap_or(env.current_contract_address()),
+                request_id,
                 timestamp: now,
             }.publish(&env);
             return Ok(());
@@ -503,6 +579,7 @@ impl Contract {
         random_seed: u64,
         public_key: BytesN<32>,
         proof: BytesN<64>,
+        request_id: u64,
     ) -> Result<Address, Error> {
         let mut raffle = read_raffle(&env)?;
 
@@ -523,12 +600,19 @@ impl Contract {
             return Err(Error::NoRandomnessRequest);
         }
 
+        // Verify request ID to prevent replay attacks
+        let stored_request_id: u64 = env.storage().instance().get(&DataKey::RandomnessRequestId).ok_or(Error::NoRandomnessRequest)?;
+        if stored_request_id != request_id {
+            return Err(Error::InvalidParameters);
+        }
+
         let message = Bytes::from_array(&env, &random_seed.to_be_bytes());
         env.crypto().ed25519_verify(&public_key, &message, &proof);
 
         RandomnessReceived {
             oracle,
             seed: random_seed,
+            request_id,
             timestamp: env.ledger().timestamp(),
         }.publish(&env);
 
@@ -536,9 +620,9 @@ impl Contract {
         Ok(env.current_contract_address())
     }
 
-    pub fn trigger_randomness_fallback(env: Env, caller: Address) -> Result<(), Error> {
+    pub fn trigger_randomness_fallback(env: Env, caller: Address, do_refund: bool) -> Result<(), Error> {
         caller.require_auth();
-        let raffle = read_raffle(&env)?;
+        let mut raffle = read_raffle(&env)?;
 
         let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotAuthorized)?;
         if caller != raffle.creator && caller != admin {
@@ -557,6 +641,20 @@ impl Contract {
         let request_ledger: u32 = env.storage().instance().get(&DataKey::RandomnessRequestLedger).unwrap_or(0);
         if env.ledger().sequence() < request_ledger + ORACLE_TIMEOUT_LEDGERS {
             return Err(Error::FallbackTooEarly);
+        }
+
+        if do_refund {
+            raffle.status = RaffleStatus::Cancelled;
+            write_raffle(&env, &raffle);
+
+            RaffleCancelled {
+                creator: raffle.creator.clone(),
+                reason: CancelReason::OracleTimeout,
+                tickets_sold: raffle.tickets_sold,
+                prize_refunded: raffle.prize_deposited,
+                timestamp: env.ledger().timestamp(),
+            }.publish(&env);
+            return Ok(());
         }
 
         let seed = build_internal_seed_u64(&env);
@@ -600,8 +698,7 @@ impl Contract {
             return Err(Error::PrizeAlreadyClaimed);
         }
 
-        let prize_bp = raffle.prizes.get(tier_index).unwrap();
-        let amount = raffle.prize_amount.checked_mul(prize_bp as i128).ok_or(Error::ArithmeticOverflow)? / 10000;
+        let amount = calculate_tier_prize(&raffle, tier_index)?;
 
         let fee = amount * (raffle.protocol_fee_bp as i128) / 10000;
         let net_amount = amount - fee;
@@ -724,7 +821,7 @@ impl Contract {
         let token_client = token::Client::new(&env, &raffle.payment_token);
         token_client.transfer(&env.current_contract_address(), &ticket.owner, &raffle.ticket_price);
 
-        crate::events::TicketRefunded {
+        TicketRefunded {
             buyer: ticket.owner,
             ticket_number: ticket.ticket_number,
             amount: raffle.ticket_price,
@@ -825,6 +922,9 @@ fn do_finalize_with_seed(
     if total_tickets == 0 {
         return Err(Error::NoTicketsSold);
     }
+    if raffle.prizes.len() as u32 > total_tickets {
+        return Err(Error::MorePrizesThanTickets);
+    }
 
     // #256: Guard against all tickets being refunded after the draw window
     // opened but before finalize runs, which would make the winners Vec empty
@@ -874,6 +974,11 @@ fn do_finalize_with_seed(
     raffle.claimed_winners = claimed_winners;
     raffle.finalized_at = Some(env.ledger().timestamp());
     write_raffle(env, &raffle);
+
+    // Clear pending randomness state
+    env.storage().instance().remove(&DataKey::RandomnessRequested);
+    env.storage().instance().remove(&DataKey::RandomnessRequestId);
+    env.storage().instance().remove(&DataKey::RandomnessRequestLedger);
 
     RaffleFinalized {
         winners,
