@@ -454,12 +454,12 @@ impl Contract {
         }
 
         if raffle.randomness_source == RandomnessSource::External {
-            let already: bool = env.storage().instance().get(&DataKey::RandomnessRequested).unwrap_or(false);
+            let already: bool = env.storage().persistent().get(&DataKey::RandomnessRequested).unwrap_or(false);
             if already {
                 return Err(Error::RandomnessAlreadyRequested);
             }
-            env.storage().instance().set(&DataKey::RandomnessRequested, &true);
-            env.storage().instance().set(&DataKey::RandomnessRequestLedger, &env.ledger().sequence());
+            env.storage().persistent().set(&DataKey::RandomnessRequested, &true);
+            env.storage().persistent().set(&DataKey::RandomnessRequestLedger, &env.ledger().sequence());
 
             RandomnessRequested {
                 oracle: raffle.oracle_address.clone().unwrap_or(env.current_contract_address()),
@@ -492,7 +492,7 @@ impl Contract {
             return Err(Error::InvalidStateTransition);
         }
 
-        let request_pending: bool = env.storage().instance().get(&DataKey::RandomnessRequested).unwrap_or(false);
+        let request_pending: bool = env.storage().persistent().get(&DataKey::RandomnessRequested).unwrap_or(false);
         if !request_pending {
             return Err(Error::NoRandomnessRequest);
         }
@@ -523,12 +523,12 @@ impl Contract {
             return Err(Error::InvalidStateTransition);
         }
 
-        let request_pending: bool = env.storage().instance().get(&DataKey::RandomnessRequested).unwrap_or(false);
+        let request_pending: bool = env.storage().persistent().get(&DataKey::RandomnessRequested).unwrap_or(false);
         if !request_pending {
             return Err(Error::NoRandomnessRequest);
         }
 
-        let request_ledger: u32 = env.storage().instance().get(&DataKey::RandomnessRequestLedger).unwrap_or(0);
+        let request_ledger: u32 = env.storage().persistent().get(&DataKey::RandomnessRequestLedger).unwrap_or(0);
         if env.ledger().sequence() < request_ledger + ORACLE_TIMEOUT_LEDGERS {
             return Err(Error::FallbackTooEarly);
         }
