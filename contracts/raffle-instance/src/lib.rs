@@ -29,6 +29,7 @@ const ORACLE_TIMEOUT_LEDGERS: u32 = 200;
 pub const MAX_DESCRIPTION_LENGTH: u32 = 1000;
 pub const MAX_TICKETS_LIMIT: u32 = 100_000;
 pub const MIN_TICKET_PRICE: i128 = 10_000;
+pub const MAX_PRIZE_AMOUNT: i128 = 1_000_000_000_000_000_000_000; // 1e21
 /// Default and bounds for the claim lockup delay (#259).
 pub const DEFAULT_CLAIM_LOCKUP_SECONDS: u64 = 3_600;
 pub const MAX_CLAIM_LOCKUP_SECONDS: u64 = 604_800; // 7 days
@@ -234,6 +235,9 @@ impl Contract {
             return Err(Error::InvalidParameters);
         }
         if config.prize_amount < config.ticket_price {
+            return Err(Error::InvalidParameters);
+        }
+        if config.prize_amount > MAX_PRIZE_AMOUNT {
             return Err(Error::InvalidParameters);
         }
         if config.prizes.len() == 0 {
