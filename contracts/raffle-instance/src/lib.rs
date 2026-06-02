@@ -565,7 +565,7 @@ impl Contract {
             return Err(Error::InvalidStatus);
         }
 
-        if tier_index as usize >= raffle.winners.len().try_into().unwrap() {
+        if tier_index >= raffle.winners.len() {
             return Err(Error::InvalidParameters);
         }
 
