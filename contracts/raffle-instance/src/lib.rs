@@ -279,6 +279,7 @@ impl Contract {
         env.storage().instance().set(&DataKey::Admin, &admin);
 
         RaffleCreated {
+            raffle_id: env.current_contract_address(),
             creator,
             end_time: config.end_time,
             max_tickets: config.max_tickets,
