@@ -319,8 +319,17 @@ impl Contract {
             return Err(Error::InvalidParameters);
         }
 
-        if config.randomness_source == RandomnessSource::External && config.oracle_address.is_none()
-        {
+        if config.randomness_source == RandomnessSource::External {
+            match config.oracle_address {
+                None => return Err(Error::InvalidParameters),
+                Some(ref addr) if *addr == env.current_contract_address() => {
+                    return Err(Error::InvalidParameters);
+                }
+                Some(_) => {}
+            }
+        }
+
+        if config.randomness_source != RandomnessSource::External && config.oracle_address.is_some() {
             return Err(Error::InvalidParameters);
         }
 
