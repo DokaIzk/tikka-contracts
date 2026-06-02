@@ -1,7 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, xdr::ToXdr, Address, Bytes, BytesN, Env, IntoVal,
+    contract, contracterror, contractimpl, contracttype, token, xdr::ToXdr, Address, Bytes, BytesN, Env, IntoVal,
     Symbol, Vec,
 };
 
@@ -661,6 +661,36 @@ impl RaffleFactory {
         env.storage()
             .persistent()
             .set(&DataKey::WhitelistedPartner(partner), &status);
+        Ok(())
+    }
+
+    /// Sweep tokens accidentally sent to the factory contract.
+    pub fn rescue_tokens(
+        env: Env,
+        token: Address,
+        recipient: Address,
+        amount: i128,
+    ) -> Result<(), ContractError> {
+        let admin = require_admin(&env)?;
+
+        if amount <= 0 {
+            return Err(ContractError::InvalidParameters);
+        }
+
+        let token_client = token::Client::new(&env, &token);
+        token_client
+            .try_transfer(&env.current_contract_address(), &recipient, &amount)
+            .map_err(|_| ContractError::InvalidParameters)?;
+
+        events::FactoryTokensRescued {
+            rescued_by: admin,
+            token,
+            recipient,
+            amount,
+            timestamp: env.ledger().timestamp(),
+        }
+        .publish(&env);
+
         Ok(())
     }
 

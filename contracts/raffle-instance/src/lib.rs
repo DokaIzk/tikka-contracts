@@ -22,7 +22,7 @@ use crate::events::{
     RaffleFinalized, RaffleStatusChanged, RandomnessReceived,
     RandomnessRequested, TicketPurchased,
     WinnerDrawn, RandomnessFallbackTriggered,
-    ContractPaused, ContractUnpaused,
+    ContractPaused, ContractUnpaused, TokensRescued,
 };
 
 const ORACLE_TIMEOUT_LEDGERS: u32 = 200;
@@ -79,6 +79,7 @@ pub enum DataKey {
     Raffle,
     TicketCount(Address),
     Ticket(u32),
+    TicketRefunded(u32),
     NextTicketId,
     Factory,
     ReentrancyGuard,
@@ -149,17 +150,6 @@ fn get_ticket_owner(env: &Env, ticket_id: u32) -> Option<Address> {
         .persistent()
         .get::<_, Ticket>(&DataKey::Ticket(ticket_id))
         .map(|t| t.owner)
-}
-
-fn next_ticket_id(env: &Env) -> u32 {
-    let current: u32 = env
-        .storage()
-        .instance()
-        .get(&DataKey::NextTicketId)
-        .unwrap_or(0u32);
-    let next = current + 1;
-    env.storage().instance().set(&DataKey::NextTicketId, &next);
-    next
 }
 
 fn acquire_guard(env: &Env) -> Result<(), Error> {
@@ -378,8 +368,19 @@ impl Contract {
             .ok_or(Error::ArithmeticOverflow)? / 10000;
         let net_amount = total_price - protocol_fee;
 
-        for _ in 0..quantity {
-            let ticket_id = next_ticket_id(&env);
+        // Read the counter once, assign IDs as a contiguous range, write counter once.
+        let first_ticket_id: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::NextTicketId)
+            .unwrap_or(0u32);
+        let last_ticket_id = first_ticket_id + quantity; // IDs will be first+1 .. first+quantity
+        env.storage()
+            .instance()
+            .set(&DataKey::NextTicketId, &last_ticket_id);
+
+        for i in 0..quantity {
+            let ticket_id = first_ticket_id + i + 1;
             raffle.tickets_sold += 1;
 
             let ticket = Ticket {
@@ -458,7 +459,9 @@ impl Contract {
             return Err(Error::InvalidStateTransition);
         }
 
-        if raffle.tickets_sold < raffle.min_tickets {
+        // #169: zero tickets sold is always a failure regardless of min_tickets,
+        // ensuring the creator can recover their deposited prize via refund_prize.
+        if raffle.tickets_sold == 0 || raffle.tickets_sold < raffle.min_tickets {
             let old_status = raffle.status.clone();
             raffle.status = RaffleStatus::Failed;
             write_raffle(&env, &raffle);
@@ -638,7 +641,7 @@ impl Contract {
     pub fn cancel_raffle(env: Env, reason: CancelReason) -> Result<(), Error> {
         let mut raffle = read_raffle(&env)?;
         
-        if reason == CancelReason::AdminCancelled {
+        if reason == CancelReason::AdminCancelled || reason == CancelReason::OracleTimeout {
             let admin: Address = env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotAuthorized)?;
             admin.require_auth();
         } else {
@@ -706,12 +709,11 @@ impl Contract {
         ticket.owner.require_auth();
 
         // Check if already refunded
-        let refund_key = (DataKey::Ticket(ticket_id), Symbol::new(&env, "refunded"));
-        if env.storage().persistent().has(&refund_key) {
-            return Err(Error::InvalidStatus); // Already refunded
+        if env.storage().persistent().has(&DataKey::TicketRefunded(ticket_id)) {
+            return Err(Error::PrizeAlreadyClaimed);
         }
 
-        env.storage().persistent().set(&refund_key, &true);
+        env.storage().persistent().set(&DataKey::TicketRefunded(ticket_id), &true);
 
         let token_client = token::Client::new(&env, &raffle.payment_token);
         token_client.transfer(&env.current_contract_address(), &ticket.owner, &raffle.ticket_price);
@@ -797,6 +799,51 @@ impl Contract {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false)
+    }
+
+    /// Sweep tokens that were accidentally sent to this contract.
+    /// The raffle's own payment_token cannot be swept while a prize is held in escrow,
+    /// ensuring active raffle funds are never at risk.
+    pub fn rescue_tokens(
+        env: Env,
+        token: Address,
+        recipient: Address,
+        amount: i128,
+    ) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotAuthorized)?;
+        admin.require_auth();
+
+        if amount <= 0 {
+            return Err(Error::InvalidParameters);
+        }
+
+        // Protect active escrow: block sweeping the raffle payment token while
+        // the prize is deposited (i.e. the escrow is live).
+        if let Ok(raffle) = read_raffle(&env) {
+            if token == raffle.payment_token && raffle.prize_deposited {
+                return Err(Error::InvalidParameters);
+            }
+        }
+
+        let token_client = token::Client::new(&env, &token);
+        token_client
+            .try_transfer(&env.current_contract_address(), &recipient, &amount)
+            .map_err(|_| Error::TokenTransferFailed)?;
+
+        TokensRescued {
+            rescued_by: admin,
+            token,
+            recipient,
+            amount,
+            timestamp: env.ledger().timestamp(),
+        }
+        .publish(&env);
+
+        Ok(())
     }
 
     pub fn set_admin(env: Env, new_admin: Address) -> Result<(), Error> {

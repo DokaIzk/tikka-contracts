@@ -83,3 +83,13 @@ pub struct RaffleCleanedUp {
     pub finish_time: u64,
     pub cleaned_at: u64,
 }
+
+#[derive(Clone)]
+#[contractevent]
+pub struct FactoryTokensRescued {
+    pub rescued_by: Address,
+    pub token: Address,
+    pub recipient: Address,
+    pub amount: i128,
+    pub timestamp: u64,
+}
