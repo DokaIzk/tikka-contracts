@@ -43,6 +43,7 @@ pub enum RandomnessType {
 pub struct RaffleConfig {
     pub description: String,
     pub end_time: u64,
+    pub no_deadline: bool,
     pub max_tickets: u32,
     pub min_tickets: u32,
     pub allow_multiple: bool,
