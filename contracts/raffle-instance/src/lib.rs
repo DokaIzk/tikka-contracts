@@ -61,7 +61,6 @@ pub struct Raffle {
     pub swap_router: Option<Address>,
     pub tikka_token: Option<Address>,
     pub finalized_at: Option<u64>,
-    pub winner_ticket_id: Option<u32>,
     /// Seconds after finalization before winners may claim (#259).
     pub claim_lockup_seconds: u64,
 }
@@ -387,7 +386,6 @@ impl Contract {
             swap_router: config.swap_router,
             tikka_token: config.tikka_token,
             finalized_at: None,
-            winner_ticket_id: None,
             claim_lockup_seconds,
         };
         write_raffle(&env, &raffle);
