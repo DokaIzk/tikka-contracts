@@ -116,16 +116,13 @@ flowchart TD
 
 ### **Core Contract**
 
-#### **`contracts/hello-world/src/lib.rs`**
+#### **`contracts/raffle/src/lib.rs`**
 
 ```rust
+pub fn init_factory(... ) -> Result<(), ContractError>;
 pub fn create_raffle(... ) -> u64;
-pub fn deposit_prize(... );
-pub fn buy_ticket(... ) -> u32;
-pub fn finalize_raffle(... ) -> Address;
-pub fn claim_prize(... );
-pub fn get_raffle(... ) -> Raffle;
-pub fn get_tickets(... ) -> Vec<Address>;
+pub fn get_raffles(... ) -> PageResultRaffles;
+pub fn get_raffle_fairness_data(... ) -> FairnessData;
 ```
 
 ### **Data Structures**
@@ -238,13 +235,13 @@ stellar contract invoke ... -- \
 ### **Run Tests**
 
 ```bash
-cargo test -p hello-world
+cargo test -p raffle-factory
 ```
 
 ### **Build the Contract**
 
 ```bash
-cargo build -p hello-world
+cargo build -p raffle-factory
 ```
 
 ## 🛠️ Development
@@ -269,6 +266,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 -   **Documentation**: Check our guides
 -   **Issues**: Report bugs and feature requests
 -   **Community**: Join our Discord for discussions
+
+
+// protocol_fee_bp: Basis points (1 bp = 0.01%). 
+// Must be <= 10_000 (100%). 
+// Example: 250 = 2.5%
 
 ---
 
