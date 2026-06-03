@@ -5,6 +5,11 @@ use soroban_sdk::{contracttype, Address, BytesN, String, Vec};
 #[derive(Clone, PartialEq, Eq, Debug)]
 #[contracttype]
 pub enum RaffleStatus {
+    /// Raffle exists in storage but the creator has not yet deposited the prize.
+    /// Ticket sales, draws, and finalization are all disallowed in this state.
+    /// Added in #225 so off-chain indexers can observe the explicit transition
+    /// to `Active` once the prize is funded.
+    PendingPrize = 6,
     Active = 0,
     Drawing = 1,
     Finalized = 2,
@@ -43,6 +48,7 @@ pub enum RandomnessType {
 pub struct RaffleConfig {
     pub description: String,
     pub end_time: u64,
+    pub no_deadline: bool,
     pub max_tickets: u32,
     pub min_tickets: u32,
     pub allow_multiple: bool,
