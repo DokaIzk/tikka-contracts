@@ -270,6 +270,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 -   **Issues**: Report bugs and feature requests
 -   **Community**: Join our Discord for discussions
 
+
+// protocol_fee_bp: Basis points (1 bp = 0.01%). 
+// Must be <= 10_000 (100%). 
+// Example: 250 = 2.5%
+
 ---
 
 **Built with ❤️ on Stellar**
