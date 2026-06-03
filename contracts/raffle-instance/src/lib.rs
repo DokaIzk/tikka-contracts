@@ -627,6 +627,8 @@ impl Contract {
             return Ok(());
         }
 
+        let caller = env.invoker();
+
         if raffle.randomness_source == RandomnessSource::External {
             let already: bool = env
                 .storage()
@@ -660,6 +662,12 @@ impl Contract {
                 .instance()
                 .set(&DataKey::RandomnessRequestId, &request_id);
 
+            DrawTriggered {
+                caller: caller.clone(),
+                total_tickets_sold: raffle.tickets_sold,
+                timestamp: now,
+            }.publish(&env);
+
             RandomnessRequested {
                 oracle: raffle
                     .oracle_address
@@ -671,6 +679,12 @@ impl Contract {
             .publish(&env);
             return Ok(());
         }
+
+        DrawTriggered {
+            caller: caller.clone(),
+            total_tickets_sold: raffle.tickets_sold,
+            timestamp: now,
+        }.publish(&env);
 
         let seed = build_internal_seed_u64(&env);
         self::do_finalize_with_seed(&env, raffle, seed, RandomnessType::Prng)

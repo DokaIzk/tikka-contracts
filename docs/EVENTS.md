@@ -69,7 +69,7 @@ Emitted when the draw process is initiated.
 **Topic:** `("tikka", "draw_triggered")`
 
 **Fields:**
-- `triggered_by: Address` - Address that triggered the draw
+- `caller: Address` - Address that initiated the draw
 - `total_tickets_sold: u32` - Total number of tickets sold at draw time
 - `timestamp: u64` - Unix timestamp when draw was triggered
 
