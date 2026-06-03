@@ -182,6 +182,7 @@ fn acquire_guard(env: &Env) -> Result<(), Error> {
 }
 
 // Helper to enforce slippage and deadline guards for token swaps
+#[allow(dead_code)]
 fn enforce_swap_guard(
     env: &Env,
     amount_out: i128,
@@ -240,11 +241,9 @@ fn build_internal_seed_u64(env: &Env) -> u64 {
     )
         .to_xdr(env);
     let hash: BytesN<32> = env.crypto().sha256(&xdr).into();
-
+    let arr = hash.to_array();
     let mut bytes = [0u8; 8];
-    for i in 0..8 {
-        bytes[i] = hash.get(i as u32).unwrap();
-    }
+    bytes.copy_from_slice(&arr[..8]);
     u64::from_be_bytes(bytes)
 }
 
@@ -418,7 +417,7 @@ impl Contract {
         // (prize_deposited flag, raffle.status) to remain untouched.
         let token_client = token::Client::new(&env, &raffle.payment_token);
         let contract_address = env.current_contract_address();
-        token_client
+        let _ = token_client
             .try_transfer(&raffle.creator, &contract_address, &raffle.prize_amount)
             .map_err(|_| Error::TokenTransferFailed)?;
 
@@ -566,7 +565,7 @@ impl Contract {
         }
 
         let token_client = token::Client::new(&env, &raffle.payment_token);
-        token_client
+        let _ = token_client
             .try_transfer(&buyer, &env.current_contract_address(), &total_price)
             .map_err(|_| Error::TokenTransferFailed)?;
 
@@ -646,10 +645,9 @@ impl Contract {
             )
                 .to_xdr(&env);
             let request_id_hash: BytesN<32> = env.crypto().sha256(&request_id_xdr).into();
+            let arr = request_id_hash.to_array();
             let mut id_bytes = [0u8; 8];
-            for i in 0..8 {
-                id_bytes[i] = request_id_hash.get(i as u32).unwrap();
-            }
+            id_bytes.copy_from_slice(&arr[..8]);
             let request_id = u64::from_be_bytes(id_bytes);
 
             env.storage()
@@ -685,7 +683,7 @@ impl Contract {
         proof: BytesN<64>,
         request_id: u64,
     ) -> Result<Address, Error> {
-        let mut raffle = read_raffle(&env)?;
+        let raffle = read_raffle(&env)?;
 
         let oracle = match &raffle.oracle_address {
             Some(addr) => {
@@ -859,13 +857,13 @@ impl Contract {
         write_raffle(&env, &raffle);
 
         let token_client = token::Client::new(&env, &raffle.payment_token);
-        token_client
+        let _ = token_client
             .try_transfer(&env.current_contract_address(), &winner, &net_amount)
             .map_err(|_| Error::TokenTransferFailed)?;
 
         if fee > 0 {
             if let Some(treasury) = &raffle.treasury_address {
-                token_client
+                let _ = token_client
                     .try_transfer(&env.current_contract_address(), treasury, &fee)
                     .map_err(|_| Error::TokenTransferFailed)?;
             }
@@ -915,7 +913,6 @@ impl Contract {
             return Err(Error::InvalidStatus);
         }
 
-        let old_status = raffle.status.clone();
         raffle.status = RaffleStatus::Cancelled;
         write_raffle(&env, &raffle);
 
@@ -947,7 +944,7 @@ impl Contract {
         write_raffle(&env, &raffle);
 
         let token_client = token::Client::new(&env, &raffle.payment_token);
-        token_client
+        let _ = token_client
             .try_transfer(
                 &env.current_contract_address(),
                 &raffle.creator,
@@ -993,7 +990,7 @@ impl Contract {
         env.storage().persistent().set(&refund_key, &true);
 
         let token_client = token::Client::new(&env, &raffle.payment_token);
-        token_client
+        let _ = token_client
             .try_transfer(
                 &env.current_contract_address(),
                 &ticket.owner,
@@ -1022,8 +1019,6 @@ impl Contract {
             .instance()
             .get(&DataKey::RandomnessSeed)
             .ok_or(Error::InvalidStatus)?;
-        let raffle = read_raffle(&env)?;
-
         let mut ticket_ids = Vec::new(&env);
         let count = get_ticket_count(&env);
         for i in 1..=count {
@@ -1127,7 +1122,7 @@ fn do_finalize_with_seed(
     if total_tickets == 0 {
         return Err(Error::NoTicketsSold);
     }
-    if raffle.prizes.len() as u32 > total_tickets {
+    if raffle.prizes.len() > total_tickets {
         return Err(Error::MorePrizesThanTickets);
     }
 
@@ -1141,7 +1136,7 @@ fn do_finalize_with_seed(
 
     let selector = OracleSeedWinnerSelection::new(seed);
     let winning_ticket_ids =
-        selector.select_winner_indices(env, total_tickets, raffle.prizes.len() as u32);
+        selector.select_winner_indices(env, total_tickets, raffle.prizes.len());
     let mut winners = Vec::new(env);
 
     for i in 0..winning_ticket_ids.len() {
@@ -1156,7 +1151,7 @@ fn do_finalize_with_seed(
             tier_index: i,
             timestamp: env.ledger().timestamp(),
         }
-        .publish(&env);
+        .publish(env);
     }
 
     let mut claimed_winners = Vec::new(env);
@@ -1200,7 +1195,7 @@ fn do_finalize_with_seed(
         randomness_type,
         finalized_at: env.ledger().timestamp(),
     }
-    .publish(&env);
+    .publish(env);
 
     Ok(())
 }

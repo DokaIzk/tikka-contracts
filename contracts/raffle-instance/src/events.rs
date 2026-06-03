@@ -48,6 +48,7 @@ pub struct TicketPurchased {
     pub timestamp: u64,
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 #[contractevent]
 pub struct DrawTriggered {

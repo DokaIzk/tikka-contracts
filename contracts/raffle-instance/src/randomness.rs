@@ -45,6 +45,7 @@ use soroban_sdk::{xdr::ToXdr, Address, Bytes, BytesN, Env, Vec};
 /// **For low-stakes raffles only.**  See the module-level comment for a full
 /// explanation of the limitations and the recommended alternative for
 /// high-value draws.
+#[allow(dead_code)]
 pub fn build_internal_seed(env: &Env, raffle_id: &Address) -> BytesN<32> {
     let timestamp = env.ledger().timestamp();
     let sequence = env.ledger().sequence();
@@ -63,6 +64,7 @@ pub fn build_internal_seed(env: &Env, raffle_id: &Address) -> BytesN<32> {
 /// In that case we expect the returned hash to be invalid rather than silently
 /// falling back to a zeroed seed, which would make winner selection
 /// deterministic and insecure.
+#[allow(dead_code)]
 fn hash_bytes32(env: &Env, input: &Bytes) -> BytesN<32> {
     let hash: BytesN<32> = env.crypto().sha256(input).into();
     if hash.to_array() == [0u8; 32] {
@@ -84,13 +86,15 @@ pub trait WinnerSelectionStrategy {
 ///
 /// **For low-stakes raffles only** — see [`build_internal_seed`] for the full
 /// security caveat.
+#[allow(dead_code)]
 pub struct PrngWinnerSelection {
-    timestamp: u64,
-    sequence: u32,
-    raffle_id: Address,
-    tickets_sold: u32,
+    pub timestamp: u64,
+    pub sequence: u32,
+    pub raffle_id: Address,
+    pub tickets_sold: u32,
 }
 
+#[allow(dead_code)]
 impl PrngWinnerSelection {
     pub fn new(timestamp: u64, sequence: u32, raffle_id: Address, tickets_sold: u32) -> Self {
         Self {

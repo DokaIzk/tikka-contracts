@@ -57,7 +57,7 @@ fn test_oracle_fallback_with_ledger_delays() {
     assert_eq!(raffle.status, RaffleStatus::Drawing);
 
     // 6. Attempt fallback too early
-    let result = client.try_trigger_randomness_fallback(&creator, &true);
+    let result = client.try_trigger_randomness_fallback(&creator, &false);
     assert_eq!(result.err(), Some(Ok(Error::FallbackTooEarly)));
 
     // 7. Simulate ledger delays
@@ -66,8 +66,8 @@ fn test_oracle_fallback_with_ledger_delays() {
         l.timestamp += 86400; // 1 day
     });
 
-    // 8. Trigger fallback successfully
-    client.trigger_randomness_fallback(&creator, &true);
+    // 8. Trigger fallback successfully (no refund — finalize)
+    client.trigger_randomness_fallback(&creator, &false);
 
     // 9. Verify finalized state
     let raffle_after = client.get_raffle();
