@@ -119,13 +119,10 @@ flowchart TD
 #### **`contracts/raffle/src/lib.rs`**
 
 ```rust
+pub fn init_factory(... ) -> Result<(), ContractError>;
 pub fn create_raffle(... ) -> u64;
-pub fn deposit_prize(... );
-pub fn buy_ticket(... ) -> u32;
-pub fn finalize_raffle(... ) -> Address;
-pub fn claim_prize(... );
-pub fn get_raffle(... ) -> Raffle;
-pub fn get_tickets(... ) -> Vec<Address>;
+pub fn get_raffles(... ) -> PageResultRaffles;
+pub fn get_raffle_fairness_data(... ) -> FairnessData;
 ```
 
 ### **Data Structures**

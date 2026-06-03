@@ -22,7 +22,7 @@ To compile the Soroban contract into WebAssembly (`.wasm`):
 ```bash
 cargo build --target wasm32-unknown-unknown --release
 ```
-The compiled WASM binary will be located at `target/wasm32-unknown-unknown/release/hello_world.wasm`.
+The compiled WASM binary will be located at `target/wasm32-unknown-unknown/release/raffle_factory.wasm`.
 
 ### Run Unit Tests
 To execute the contract's standard Rust unit tests:
