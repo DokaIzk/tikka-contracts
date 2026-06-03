@@ -783,6 +783,7 @@ mod tests {
     #[test]
     fn test_init_factory() {
         let env = Env::default();
+        env.mock_all_auths();
         let (client, admin, _treasury) = setup_factory(&env);
         assert_eq!(client.get_admin(), admin);
     }
