@@ -167,12 +167,13 @@ pub struct ContractUnpaused {
     pub timestamp: u64,
 }
 
+
 #[derive(Clone)]
 #[contractevent]
-pub struct TokensRescued {
-    pub rescued_by: Address,
-    pub token: Address,
-    pub recipient: Address,
+pub struct EmergencyWithdrawn {
+    pub withdrawn_by: Address,
+    pub to: Address,
     pub amount: i128,
+    pub token: Address,
     pub timestamp: u64,
 }
