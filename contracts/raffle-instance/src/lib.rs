@@ -1407,6 +1407,7 @@ fn do_finalize_with_seed(
         }
         .publish(env);
     }
+    // Winners are batch-notified via RaffleFinalized below; no per-winner cross-contract call in loop.
 
     let mut claimed_winners = Vec::new(env);
     for _ in 0..raffle.prizes.len() {
