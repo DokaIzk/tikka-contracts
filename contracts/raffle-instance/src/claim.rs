@@ -185,6 +185,7 @@ pub(crate) fn sweep_unclaimed(
 }
 
 pub(crate) fn refund_prize(env: Env) -> Result<(), Error> {
+    let _guard = Guard::new(&env)?;
     let mut raffle = read_raffle(&env)?;
     raffle.creator.require_auth();
 
