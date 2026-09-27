@@ -18,7 +18,7 @@ pub use registry::{CreatorProfile, LeaderboardMetric, PartnerStats};
 
 use raffle_shared::{
     effective_limit, exceeds_internal_randomness_cap, AdminOp, FairnessData, PageResultRaffles,
-    PaginationParams, RaffleConfig, RecurringRaffleConfig,
+    PaginationParams, RaffleConfig, RaffleConfigBuilder, RecurringRaffleConfig,
 };
 
 use raffle_shared::constants::{
@@ -288,6 +288,9 @@ pub enum ContractError {
     /// called by an address that is not a raffle deployed by this factory.
     /// Code 25.
     CallerNotRegisteredRaffle = 25,
+    /// The selected randomness source is too weak for the configured prize.
+    /// Code 26.
+    RandomnessSourceTooWeakForPrize = 26,
 }
 
 pub const LEADERBOARD_CAP: u32 = 10;
@@ -998,9 +1001,11 @@ impl RaffleFactory {
             .get(&DataKey::Treasury)
             .ok_or(ContractError::TreasuryNotSet)?;
 
-        let mut final_config = config;
-        final_config.protocol_fee_bp = protocol_fee_bp;
-        final_config.treasury_address = Some(treasury);
+        let final_config = RaffleConfigBuilder::from_config(&env, config)
+            .protocol_fee_bp(protocol_fee_bp)
+            .treasury_address(Some(treasury))
+            .build()
+            .map_err(|_| ContractError::InvalidParameters)?;
 
         if exceeds_internal_randomness_cap(&final_config.randomness_source, final_config.prize_amount) {
             return Err(ContractError::RandomnessSourceTooWeakForPrize);
@@ -1093,10 +1098,13 @@ impl RaffleFactory {
             return Err(ContractError::MaxRoundsReached);
         }
 
+        let config = RaffleConfigBuilder::from_config(&env, entry.config.base_config.clone())
+            .build()
+            .map_err(|_| ContractError::InvalidParameters)?;
         let raffle_address = self::create_raffle_internal(
             &env,
             entry.creator.clone(),
-            entry.config.base_config.clone(),
+            config,
         )?;
 
         entry.current_round = entry.current_round.saturating_add(1);
@@ -2182,32 +2190,18 @@ mod tests {
     }
 
     fn test_raffle_config(env: &Env, payment_token: &Address) -> RaffleConfig {
-        RaffleConfig {
-            description: String::from_str(env, "Test Raffle"),
-            end_time: 0,
-            no_deadline: true,
-            max_tickets: 10,
-            max_tickets_per_tx: 10,
-            min_tickets: 1,
-            allow_multiple: true,
-            ticket_price: 10_000,
-            payment_token: payment_token.clone(),
-            prize_amount: 10_000,
-            prizes: SdkVec::from_array(env, [10_000u32]),
-            randomness_source: RandomnessSource::Internal,
-            oracle_address: None,
-            protocol_fee_bp: 0,
-            treasury_address: None,
-            swap_router: None,
-            tikka_token: None,
-            metadata_hash: BytesN::from_array(env, &[1u8; 32]),
-            claim_lockup_seconds: 0,
-            swap_deadline_seconds: 0,
-            early_bird_ticket_percentage: 0,
-            early_bird_discount_bp: 0,
-            category: None,
-            unique_winners: false,
-        }
+        RaffleConfigBuilder::new(env, payment_token.clone())
+            .description(String::from_str(env, "Test Raffle"))
+            .max_tickets(10)
+            .max_tickets_per_tx(10)
+            .ticket_price(10_000)
+            .prize_amount(10_000)
+            .prizes(SdkVec::from_array(env, [10_000u32]))
+            .metadata_hash(BytesN::from_array(env, &[1u8; 32]))
+            .claim_lockup_seconds(0)
+            .swap_deadline_seconds(0)
+            .build()
+            .expect("valid test raffle config")
     }
 
     fn create_raffles_via_factory(

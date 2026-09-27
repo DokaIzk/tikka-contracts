@@ -2,7 +2,11 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used))]
 
 pub mod constants;
+pub mod config_builder;
+pub mod errors;
 pub mod events;
+
+pub use config_builder::{ConfigValidationError, RaffleConfigBuilder};
 
 #[cfg(test)]
 mod nft_mint_test;
