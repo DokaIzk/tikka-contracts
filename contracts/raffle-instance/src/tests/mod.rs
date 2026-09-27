@@ -157,3 +157,4 @@ pub mod claim;
 pub mod init;
 pub mod admin;
 pub mod tickets;
+pub mod reentrancy;
