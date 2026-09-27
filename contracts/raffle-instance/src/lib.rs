@@ -270,7 +270,6 @@ pub enum Error {
     InvalidAdminAddress = 63,
     /// Randomness callback received before the minimum delay. Code 64.
     RandomnessTooEarly = 64,
-    ExceedsMaxTicketsPerAddress = 67,
     CancelTimelockActive = 65,
     CancelNotScheduled = 66,
     ExceedsMaxTicketsPerAddress = 67,

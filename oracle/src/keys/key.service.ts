@@ -11,7 +11,7 @@ export interface SecretsAdapter {
  */
 export class EnvSecretsAdapter implements SecretsAdapter {
   async getSecret(key: string): Promise<Buffer> {
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env['NODE_ENV'] === 'production') {
       throw new Error('Security violation: EnvSecretsAdapter is not allowed in production environment');
     }
     const secret = process.env[key];
