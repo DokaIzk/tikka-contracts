@@ -198,6 +198,9 @@ Optional configuration:
 - `ALERT_QUEUE_DEPTH_LIMIT`: Queue depth alert threshold (default: 10)
 - `ALERT_QUEUE_AGE_LIMIT_MS`: Queue age alert threshold (default: 300000)
 - `ALERT_RPC_UNREACHABLE_THRESHOLD`: RPC unreachable alert threshold (default: 3)
+- `ORACLE_RETRY_BASE_MS`: Retry backoff base in milliseconds (default: 500)
+- `ORACLE_RETRY_MAX_MS`: Maximum retry backoff in milliseconds (default: 30000)
+- `ORACLE_RETRY_MAX_ATTEMPTS`: Maximum submission attempts (default: 5)
 
 ### Starting the service
 
@@ -266,6 +269,12 @@ If shutdown timeout is exceeded:
 ```
 Graceful shutdown drain exceeded 30000 ms — forcing exit 1.
 ```
+
+## Randomness sources
+
+In single-oracle mode, the oracle signs a message bound to the raffle contract and request ID. The seed submitted on-chain is the first 8 bytes of SHA-256 of that signature proof, interpreted as a big-endian u64; the on-chain verifier independently derives the same value. The wall clock is not a source of seed entropy.
+
+In quorum mode, each participating oracle generates its seed from 8 bytes returned by Node.js `crypto.randomBytes`.
 
 ## Pipeline components
 

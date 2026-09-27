@@ -1,6 +1,7 @@
 import { Keypair } from '@stellar/stellar-sdk';
 import { decodeSecretKey } from './keys/secret-key';
 import { logger } from './logging/logger';
+import { RetryPolicyOptions } from './tx/retry-policy';
 
 export interface OracleConfig {
   rpcUrl: string;
@@ -14,6 +15,7 @@ export interface OracleConfig {
   alertQueueDepthLimit: number;
   alertQueueAgeLimitMs: number;
   alertRpcUnreachableThreshold: number;
+  retryPolicy: RetryPolicyOptions;
 }
 
 function readPositiveInt(name: string, defaultValue: number, errors: string[]): number {
@@ -78,6 +80,11 @@ export function loadAndValidateConfig(): OracleConfig {
   const alertQueueDepthLimit = readPositiveInt('ALERT_QUEUE_DEPTH_LIMIT', 10, errors);
   const alertQueueAgeLimitMs = readPositiveInt('ALERT_QUEUE_AGE_LIMIT_MS', 300_000, errors);
   const alertRpcUnreachableThreshold = readPositiveInt('ALERT_RPC_UNREACHABLE_THRESHOLD', 3, errors);
+  const retryPolicy: RetryPolicyOptions = {
+    baseMs: readPositiveInt('ORACLE_RETRY_BASE_MS', 500, errors),
+    maxMs: readPositiveInt('ORACLE_RETRY_MAX_MS', 30_000, errors),
+    maxAttempts: readPositiveInt('ORACLE_RETRY_MAX_ATTEMPTS', 5, errors),
+  };
 
   if (errors.length > 0) {
     logger.error('Configuration errors:');
@@ -102,5 +109,6 @@ export function loadAndValidateConfig(): OracleConfig {
     alertQueueDepthLimit,
     alertQueueAgeLimitMs,
     alertRpcUnreachableThreshold,
+    retryPolicy,
   };
 }
