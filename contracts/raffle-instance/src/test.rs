@@ -4,6 +4,8 @@
 mod admin;
 #[path = "tests/invariants.rs"]
 mod invariants;
+#[path = "tests/reentrancy.rs"]
+mod reentrancy;
 #[path = "tests/tickets.rs"]
 mod tickets;
 
