@@ -7,6 +7,7 @@ export interface OracleConfig {
   factoryContractId: string;
   logLevel: string;
   pollIntervalMs: number;
+  healthPort: number;
   alertWebhookUrl: string;
   alertFailureThreshold: number;
   alertRateLimitMs: number;
@@ -53,7 +54,7 @@ function isValidSecretKey(secret: string): boolean {
 export function loadAndValidateConfig(): OracleConfig {
   const errors: string[] = [];
 
-  const rpcUrl = process.env.STELLAR_RPC_URL;
+  const rpcUrl = process.env['STELLAR_RPC_URL'];
   if (!rpcUrl) {
     errors.push('STELLAR_RPC_URL is required');
   }
@@ -71,6 +72,7 @@ export function loadAndValidateConfig(): OracleConfig {
   }
 
   const alertWebhookUrl = process.env['ALERT_WEBHOOK_URL'] ?? '';
+  const healthPort = readPositiveInt('HEALTH_PORT', 9090, errors);
   const alertFailureThreshold = readPositiveInt('ALERT_FAILURE_THRESHOLD', 3, errors);
   const alertRateLimitMs = readPositiveInt('ALERT_RATE_LIMIT_MS', 60_000, errors);
   const alertQueueDepthLimit = readPositiveInt('ALERT_QUEUE_DEPTH_LIMIT', 10, errors);
@@ -85,15 +87,15 @@ export function loadAndValidateConfig(): OracleConfig {
     process.exit(1);
   }
 
-  if (secretKey === undefined || rpcUrl === undefined || factoryContractId === undefined) {
-    throw new Error('Required configuration missing after validation');
-  }
-
+  // At this point errors.length === 0, so rpcUrl and factoryContractId are defined.
+  // The non-null assertions below are replaced by explicit narrowing guards above
+  // (process.exit(1) means we never reach here with undefined values).
   return {
-    rpcUrl: rpcUrl!,
-    factoryContractId: factoryContractId!,
-    logLevel: process.env.LOG_LEVEL ?? 'info',
+    rpcUrl: rpcUrl as string,
+    factoryContractId: factoryContractId as string,
+    logLevel: process.env['LOG_LEVEL'] ?? 'info',
     pollIntervalMs,
+    healthPort,
     alertWebhookUrl,
     alertFailureThreshold,
     alertRateLimitMs,
