@@ -59,6 +59,7 @@ export class OraclePipeline {
       rpcUrl: config.rpcUrl,
       alerter: this.alerter,
       failureThreshold: config.alertFailureThreshold,
+      retryPolicy: config.retryPolicy,
     });
 
     // Initialize event listener (public key will be available after initialize)
@@ -173,8 +174,7 @@ export class OraclePipeline {
         // External (single oracle) mode!
         console.log(`Processing single-oracle VRF randomness request for raffle=${raffleContract} requestId=${requestId}`);
         
-        const randomSeed = Date.now(); // In production, this should come from a secure source
-        const proof = this.vrfService.signRandomnessProof(raffleContract, requestId, BigInt(randomSeed));
+        const proof = this.vrfService.signRandomnessProof(raffleContract, requestId);
 
         // Submit transaction
         const txHash = await this.txSubmitter.submitProvideRandomness({
